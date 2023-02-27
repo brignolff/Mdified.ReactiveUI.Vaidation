@@ -61,6 +61,48 @@ public static class ViewForExtensions
     }
 
     /// <summary>
+    /// Binds the specified ViewModel property validation to the View property.
+    /// </summary>
+    /// <typeparam name="TView">IViewFor of TViewModel.</typeparam>
+    /// <typeparam name="TViewModel">ViewModel type.</typeparam>
+    /// <typeparam name="TViewModelProperty">ViewModel property type.</typeparam>
+    /// <typeparam name="TViewProperty">View property type.</typeparam>
+    /// <param name="view">IViewFor instance.</param>
+    /// <param name="viewModel">ViewModel instance. Can be null, used for generic type resolution.</param>
+    /// <param name="validationContext">ValidationContext instance.</param>
+    /// <param name="viewModelProperty">ViewModel property.</param>
+    /// <param name="viewProperty">View property to bind the validation message.</param>
+    /// <param name="formatter">
+    /// Validation formatter. Defaults to <see cref="SingleLineFormatter"/>. In order to override the global
+    /// default value, implement <see cref="IValidationTextFormatter{TOut}"/> and register an instance of
+    /// IValidationTextFormatter&lt;string&gt; into Splat.Locator.
+    /// </param>
+    /// <returns>Returns a <see cref="IDisposable"/> object.</returns>
+    [SuppressMessage("Design", "CA1801: Parameter unused", Justification = "Used for generic resolution")]
+    public static IDisposable BindValidation<TView, TViewModel, TViewModelProperty, TViewProperty>(
+        this TView view,
+        TViewModel? viewModel,
+        Func<TViewModel, ValidationContext> validationContext,
+        Expression<Func<TViewModel, TViewModelProperty>> viewModelProperty,
+        Expression<Func<TView, TViewProperty>> viewProperty,
+        IValidationTextFormatter<string>? formatter = null)
+        where TView : IViewFor<TViewModel>
+        where TViewModel : class, IReactiveObject, IValidatableViewModel
+    {
+        if (viewModelProperty is null)
+        {
+            throw new ArgumentNullException(nameof(viewModelProperty));
+        }
+
+        if (viewProperty is null)
+        {
+            throw new ArgumentNullException(nameof(viewProperty));
+        }
+
+        return MyValidationBinding.ForProperty(view, validationContext, viewModelProperty, viewProperty, formatter);
+    }
+
+    /// <summary>
     /// Binds the overall validation of a ViewModel to a specified View property.
     /// </summary>
     /// <typeparam name="TView">IViewFor of TViewModel.</typeparam>
@@ -90,6 +132,40 @@ public static class ViewForExtensions
         }
 
         return ValidationBinding.ForViewModel<TView, TViewModel, TViewProperty>(view, viewProperty, formatter);
+    }
+
+    /// <summary>
+    /// Binds the overall validation of a ViewModel to a specified View property.
+    /// </summary>
+    /// <typeparam name="TView">IViewFor of TViewModel.</typeparam>
+    /// <typeparam name="TViewModel">ViewModel type.</typeparam>
+    /// <typeparam name="TViewProperty">View property type.</typeparam>
+    /// <param name="view">IViewFor instance.</param>
+    /// <param name="viewModel">ViewModel instance. Can be null, used for generic type resolution.</param>
+    /// <param name="validationContext">ValidationContext instance.</param>
+    /// <param name="viewProperty">View property to bind the validation message.</param>
+    /// <param name="formatter">
+    /// Validation formatter. Defaults to <see cref="SingleLineFormatter"/>. In order to override the global
+    /// default value, implement <see cref="IValidationTextFormatter{TOut}"/> and register an instance of
+    /// IValidationTextFormatter&lt;string&gt; into Splat.Locator.
+    /// </param>
+    /// <returns>Returns a <see cref="IDisposable"/> object.</returns>
+    [SuppressMessage("Design", "CA1801: Parameter unused", Justification = "Used for generic resolution")]
+    public static IDisposable BindValidation<TView, TViewModel, TViewProperty>(
+        this TView view,
+        TViewModel? viewModel,
+        Func<TViewModel, ValidationContext> validationContext,
+        Expression<Func<TView, TViewProperty>> viewProperty,
+        IValidationTextFormatter<string>? formatter = null)
+        where TView : IViewFor<TViewModel>
+        where TViewModel : class, IReactiveObject, IValidatableViewModel
+    {
+        if (viewProperty is null)
+        {
+            throw new ArgumentNullException(nameof(viewProperty));
+        }
+
+        return MyValidationBinding.ForViewModel<TView, TViewModel, TViewProperty>(view, validationContext, viewProperty, formatter);
     }
 
     /// <summary>

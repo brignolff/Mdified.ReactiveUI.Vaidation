@@ -141,6 +141,123 @@ public sealed class ValidationBinding : IValidationBinding
     }
 
     /// <summary>
+    /// Creates a binding between a ViewModel property and a view property.
+    /// </summary>
+    /// <typeparam name="TView">ViewFor of ViewModel type.</typeparam>
+    /// <typeparam name="TViewModel">ViewModel type.</typeparam>
+    /// <typeparam name="TViewModelProperty">ViewModel property type.</typeparam>
+    /// <typeparam name="TViewProperty">View property type.</typeparam>
+    /// <param name="view">View instance.</param>
+    /// <param name="validationContext">ValidationContext instance.</param>
+    /// <param name="viewModelProperty">ViewModel property.</param>
+    /// <param name="viewProperty">View property.</param>
+    /// <param name="formatter">
+    /// Validation formatter. Defaults to <see cref="SingleLineFormatter"/>. In order to override the global
+    /// default value, implement <see cref="IValidationTextFormatter{TOut}"/> and register an instance of
+    /// IValidationTextFormatter&lt;string&gt; into Splat.Locator.
+    /// </param>
+    /// <param name="strict">Indicates if the ViewModel property to find is unique.</param>
+    /// <returns>Returns a validation component.</returns>
+    public static IValidationBinding ForProperty<TView, TViewModel, TViewModelProperty, TViewProperty>(
+        TView view,
+        Func<TViewModel, ValidationContext> validationContext,
+        Expression<Func<TViewModel, TViewModelProperty>> viewModelProperty,
+        Expression<Func<TView, TViewProperty>> viewProperty,
+        IValidationTextFormatter<string>? formatter = null,
+        bool strict = true)
+        where TView : IViewFor<TViewModel>
+        where TViewModel : class, IReactiveObject, IValidatableViewModel
+    {
+        if (view is null)
+        {
+            throw new ArgumentNullException(nameof(view));
+        }
+
+        if (viewModelProperty is null)
+        {
+            throw new ArgumentNullException(nameof(viewModelProperty));
+        }
+
+        if (viewProperty is null)
+        {
+            throw new ArgumentNullException(nameof(viewProperty));
+        }
+
+        formatter ??= Locator.Current.GetService<IValidationTextFormatter<string>>() ??
+                      SingleLineFormatter.Default;
+
+        var vcObs = view
+            .WhenAnyValue(v => v.ViewModel)
+            .Where(vm => vm is not null)
+            .SelectMany(vm => validationContext(vm!).ObserveFor(viewModelProperty, strict))
+            .Select(
+                states => states
+                    .Select(state => formatter.Format(state.Text))
+                    .FirstOrDefault(msg => !string.IsNullOrEmpty(msg)) ?? string.Empty);
+
+        var updateObs = BindToView(vcObs, view, viewProperty);
+        return new MyValidationBinding(updateObs);
+    }
+
+    /// <summary>
+    /// Creates a binding from a specified ViewModel property to a provided action. Such action binding allows
+    /// to easily create new and more specialized platform-specific BindValidation extension methods like those
+    /// we have in <see cref="ViewForExtensions" /> targeting the Android platform.
+    /// </summary>
+    /// <typeparam name="TView">ViewFor of ViewModel type.</typeparam>
+    /// <typeparam name="TViewModel">ViewModel type.</typeparam>
+    /// <typeparam name="TViewModelProperty">ViewModel property type.</typeparam>
+    /// <typeparam name="TOut">Action return type.</typeparam>
+    /// <param name="view">View instance.</param>
+    /// <param name="validationContext">ValidationContext instance.</param>
+    /// <param name="viewModelProperty">ViewModel property.</param>
+    /// <param name="action">Action to be executed.</param>
+    /// <param name="formatter">Validation formatter.</param>
+    /// <param name="strict">Indicates if the ViewModel property to find is unique.</param>
+    /// <returns>Returns a validation component.</returns>
+    public static IValidationBinding ForProperty<TView, TViewModel, TViewModelProperty, TOut>(
+        TView view,
+        Func<TViewModel, ValidationContext> validationContext,
+        Expression<Func<TViewModel, TViewModelProperty>> viewModelProperty,
+        Action<IList<IValidationState>, IList<TOut>> action,
+        IValidationTextFormatter<TOut> formatter,
+        bool strict = true)
+        where TView : IViewFor<TViewModel>
+        where TViewModel : class, IReactiveObject, IValidatableViewModel
+    {
+        if (view is null)
+        {
+            throw new ArgumentNullException(nameof(view));
+        }
+
+        if (viewModelProperty is null)
+        {
+            throw new ArgumentNullException(nameof(viewModelProperty));
+        }
+
+        if (action is null)
+        {
+            throw new ArgumentNullException(nameof(action));
+        }
+
+        if (formatter is null)
+        {
+            throw new ArgumentNullException(nameof(formatter));
+        }
+
+        var vcObs = view
+            .WhenAnyValue(v => v.ViewModel)
+            .Where(vm => vm is not null)
+            .SelectMany(vm => validationContext(vm!).ObserveFor(viewModelProperty, strict))
+            .Do(states => action(states, states
+                .Select(state => formatter.Format(state.Text))
+                .ToList()))
+            .Select(_ => Unit.Default);
+
+        return new MyValidationBinding(vcObs);
+    }
+
+    /// <summary>
     /// Creates a binding between a <see cref="ValidationHelper" /> and a specified View property.
     /// </summary>
     /// <typeparam name="TView">ViewFor of ViewModel type.</typeparam>
@@ -340,6 +457,98 @@ public sealed class ValidationBinding : IValidationBinding
 
         var updateObs = BindToView(vcObs, view, viewProperty);
         return new ValidationBinding(updateObs);
+    }
+
+    /// <summary>
+    /// Creates a binding between a ViewModel and a specified action. Such action binding allows to easily create
+    /// new and more specialized platform-specific BindValidation extension methods like those we have in
+    /// <see cref="ViewForExtensions" /> targeting the Android platform.
+    /// </summary>
+    /// <typeparam name="TView">ViewFor of ViewModel type.</typeparam>
+    /// <typeparam name="TViewModel">ViewModel type.</typeparam>
+    /// <typeparam name="TOut">Action return type.</typeparam>
+    /// <param name="view">View instance.</param>
+    /// <param name="validationContext">ValidationContext instance.</param>
+    /// <param name="action">Action to be executed.</param>
+    /// <param name="formatter">Validation formatter.</param>
+    /// <returns>Returns a validation component.</returns>
+    public static IValidationBinding ForViewModel<TView, TViewModel, TOut>(
+        TView view,
+        Func<TViewModel, ValidationContext> validationContext,
+        Action<TOut> action,
+        IValidationTextFormatter<TOut> formatter)
+        where TView : IViewFor<TViewModel>
+        where TViewModel : class, IReactiveObject, IValidatableViewModel
+    {
+        if (view is null)
+        {
+            throw new ArgumentNullException(nameof(view));
+        }
+
+        if (action is null)
+        {
+            throw new ArgumentNullException(nameof(action));
+        }
+
+        if (formatter is null)
+        {
+            throw new ArgumentNullException(nameof(formatter));
+        }
+
+        var vcObs = view
+            .WhenAnyValue(v => v.ViewModel)
+            .Where(vm => vm is not null)
+            .SelectMany(vm => validationContext(vm!).ValidationStatusChange)
+            .Do(state => action(formatter.Format(state.Text)))
+            .Select(_ => Unit.Default);
+
+        return new MyValidationBinding(vcObs);
+    }
+
+    /// <summary>
+    /// Creates a binding between a ViewModel and a View property.
+    /// </summary>
+    /// <typeparam name="TView">ViewFor of ViewModel type.</typeparam>
+    /// <typeparam name="TViewModel">ViewModel type.</typeparam>
+    /// <typeparam name="TViewProperty">View property type.</typeparam>
+    /// <param name="view">View instance.</param>
+    /// <param name="validationContext">ValidationContext instance.</param>
+    /// <param name="viewProperty">View property to bind the validation message.</param>
+    /// <param name="formatter">
+    /// Validation formatter. Defaults to <see cref="SingleLineFormatter"/>. In order to override the global
+    /// default value, implement <see cref="IValidationTextFormatter{TOut}"/> and register an instance of
+    /// IValidationTextFormatter&lt;string&gt; into Splat.Locator.
+    /// </param>
+    /// <returns>Returns a validation component.</returns>
+    public static IValidationBinding ForViewModel<TView, TViewModel, TViewProperty>(
+        TView view,
+        Func<TViewModel, ValidationContext> validationContext,
+        Expression<Func<TView, TViewProperty>> viewProperty,
+        IValidationTextFormatter<string>? formatter = null)
+        where TView : IViewFor<TViewModel>
+        where TViewModel : class, IReactiveObject, IValidatableViewModel
+    {
+        if (view is null)
+        {
+            throw new ArgumentNullException(nameof(view));
+        }
+
+        if (viewProperty is null)
+        {
+            throw new ArgumentNullException(nameof(view));
+        }
+
+        formatter ??= Locator.Current.GetService<IValidationTextFormatter<string>>() ??
+                      SingleLineFormatter.Default;
+
+        var vcObs = view
+        .WhenAnyValue(v => v.ViewModel)
+        .Where(vm => vm is not null).SelectMany(vm => validationContext(vm!).ValidationStatusChange)
+        .Select(vc =>
+        formatter.Format(vc.Text));
+
+        var updateObs = BindToView(vcObs, view, viewProperty);
+        return new MyValidationBinding(updateObs);
     }
 
     /// <inheritdoc/>
